@@ -49,18 +49,31 @@ class Router(object):
 
                         self.net.send_packet(dev, reply)
 
-    def ipv4_actions(self,pkt):
-       ipv4_header = pkt.get_header(IPv4)
+    def ipv4_actions(self,pkt,table):
+        ipv4_header = pkt.get_header(IPv4)
 
-	   #decrement TTL by 1
-       ipv4_header.ttl = ipv4_header.ttl - 1
+	    #decrement TTL by 1
+        ipv4_header.ttl = ipv4_header.ttl - 1
 
-	   #TODO figure out the next hop
+        entry = table.matching_entry(ipv4_header.dst)
 
-	   #TODO get the MAC address of the next hop
+		#Not in our table, so drop
+        if entry == None:
+            return
+
+	    #Check if the address is directly reachable through one of the router interfaces
+        if entry.interface_name != None:
+			#TODO need to update time of last use in ARP table and send out somehow
+            return
+
+	    #TODO get the IP address of the next hop
+		#TODO send out ARP request to figure out next hop MAC address
+
+		#TODO add packet to ARP queue
 
 
-    def router_main(self):    
+
+    def router_main(self,table = None):    
         '''
         Main method for router; we stay in a loop in this method, receiving
         packets until the end of time.
@@ -84,7 +97,9 @@ class Router(object):
                     self.arp_actions(pkt)
 
                 if pkt.has_header(IPv4):
-                    self.ipv4_actions(pkt)
+                    self.ipv4_actions(pkt,table)
+
+            #TODO process ARP queue
                     
 
 class ForwardingTable:
@@ -103,7 +118,7 @@ class ForwardingTable:
 		self.table.append(entry)
 
 	def parse_interface_object(self,interface):
-		entry = ForwardingEntry(interface.ipaddr,interface.netmask)
+		entry = ForwardingEntry(interface.ipaddr,interface.netmask,None,interface.name)
 		self.table.append(entry)
 
 	'''
@@ -151,6 +166,12 @@ def initialize_forwarding_table(router,table):
 	for line in f:
 		table.parse_fileline(line)
 	return
+class ArpQueueEntry:
+	retries = 0
+	last_request_time = None
+
+	def __init__(self,last_request_time):
+		self.last_request_time = last_request_time
 
 
 '''
@@ -161,5 +182,5 @@ def main(net):
 	r = Router(net)
 	table = ForwardingTable()
 	initialize_forwarding_table(r,table)
-	r.router_main()
+	r.router_main(table)
 	net.shutdown()
