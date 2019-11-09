@@ -17,6 +17,14 @@ class Router(object):
         # other initialization stuff here
         self.arp_table={}
         self.my_interface = net.interfaces()
+        self.forwarding_table = ForwardingTable()
+        self.arp_queue = []
+
+    def ipv4_destination_is_me(self,dest):
+        for interface in self.my_interface:
+           if interface.ipaddr == dest:
+               return True
+        return False
 
     def arp_actions(self,pkt):
         arp = pkt.get_header(Arp)
@@ -49,35 +57,60 @@ class Router(object):
 
                         self.net.send_packet(dev, reply)
 
-    def ipv4_actions(self,pkt,table):
+    def ipv4_actions(self,pkt):
         ipv4_header = pkt.get_header(IPv4)
 
 	    #decrement TTL by 1
         ipv4_header.ttl = ipv4_header.ttl - 1
 
-        entry = table.matching_entry(ipv4_header.dst)
+        entry = self.forwarding_table.matching_entry(ipv4_header.dst)
 
 		#Not in our table, so drop
         if entry == None:
             return
 
-	    #Check if the address is directly reachable through one of the router interfaces
-        if entry.interface_name != None:
-			#TODO need to update time of last use in ARP table and send out somehow
-            return
+		#If the packet is for us, drop/ignore it
+        if self.ipv4_destination_is_me(ipv4_header.dst):
+             return
 
-	    #TODO get the IP address of the next hop
-		#TODO send out ARP request to figure out next hop MAC address
+	    #We either have an next hop for the entry or the entry is our final destination
+        if entry.next_hop != None:
+            dest_ip_address = entry.next_hop
+        else:
+            dest_ip_address = ipv4_header.dst
+        
+        #Either we have the ARP address already mapped or we gotta query for it
+         if dest_ip_address in self.arp_table:
+                mac_addr = self.arp_table[dest_ip_address]
+         else:
+             query_arp = 1
 
-		#TODO add packet to ARP queue
+		#Add packet to ARP queue
+        if query_arp == 1:
+            arp_queue_entry = ArpQueueEntry(entry,pkt)
+            self.arp_queue.append(arp_queue_entry)
+        else:
+            #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
+            forward_pkt = pkt
+            forward_pkt[0].dst = mac_addr
+            #TODO update time of use of ARP entry!
+
+            for intf in self.my_interface:
+                if intf == entry.interface_name:
+                    forward_pkt[0].src = intf.ethaddr
+                    self.net.send_packet(intf,forward_pkt)
+                
 
 
 
-    def router_main(self,table = None):    
+    def router_main(self):    
         '''
         Main method for router; we stay in a loop in this method, receiving
         packets until the end of time.
         '''
+        #Initialize forwarding table from file and my_interface
+        initialize_forwarding_table(self,self.forwarding_table)
+        
         while True:
             gotpkt = True
             try:
@@ -97,7 +130,7 @@ class Router(object):
                     self.arp_actions(pkt)
 
                 if pkt.has_header(IPv4):
-                    self.ipv4_actions(pkt,table)
+                    self.ipv4_actions(pkt)
 
             #TODO process ARP queue
                     
@@ -166,12 +199,15 @@ def initialize_forwarding_table(router,table):
 	for line in f:
 		table.parse_fileline(line)
 	return
-class ArpQueueEntry:
-	retries = 0
-	last_request_time = None
 
-	def __init__(self,last_request_time):
+class ArpQueueEntry:
+
+	def __init__(self,fw_table_entry = None, pkt = None, last_request_time = time.time()):
 		self.last_request_time = last_request_time
+        self.retries = 0
+        self.fw_table_entry = fw_table_entry
+        self.pkt = pkt
+
 
 
 '''
@@ -180,7 +216,5 @@ object and get it going.
 '''
 def main(net):
 	r = Router(net)
-	table = ForwardingTable()
-	initialize_forwarding_table(r,table)
-	r.router_main(table)
+	r.router_main()
 	net.shutdown()
