@@ -87,21 +87,21 @@ class Router(object):
 
 		#Add packet to ARP queue
         if query_arp == 1:
-            arp_queue_entry = ArpQueueEntry(entry,pkt)
+            arp_queue_entry = ArpQueueEntry(dest_ip_address,entry,pkt)
             self.arp_queue.append(arp_queue_entry)
         else:
-            #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
-            forward_pkt = pkt
-            forward_pkt[0].dst = mac_addr
-            #TODO update time of use of ARP entry!
+            self.create_and_send_ethernet_packet(pkt,mac_addr,entry)
 
-            for intf in self.my_interface:
-                if intf == entry.interface_name:
-                    forward_pkt[0].src = intf.ethaddr
-                    self.net.send_packet(intf,forward_pkt)
-                
+    def create_and_send_ethernet_packet(pkt,mac_addr,entry):
+        #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
+        forward_pkt = pkt
+        forward_pkt[0].dst = mac_addr
+        #TODO update time of use of ARP entry!
 
-
+        for intf in self.my_interface:
+            if intf.name == entry.interface_name:
+                forward_pkt[0].src = intf.ethaddr
+                self.net.send_packet(intf,forward_pkt)
 
     def router_main(self):    
         '''
@@ -132,8 +132,29 @@ class Router(object):
                 if pkt.has_header(IPv4):
                     self.ipv4_actions(pkt)
 
-            #TODO process ARP queue
+            #Process ARP queue
+            for arp_queue_item in self.arp_queue:
+                entry = arp_queue_item.fw_table_entry
+                if arp_queue_item.dest_ip in self.arp_table:
+                    mac_addr = self.arp_table[arp_queue_item.dest_ip]
+                    pkt = arp_queue_item.pkt
+                    self.create_and_send_ethernet_packet(pkt,mac_addr,entry)
                     
+                    self.arp_queue.remove(arp_queue_item)
+
+                time_dif = time.time() - arp_queue_item.last_request_time
+                else if time_dif >= 1:
+                    arp_queue_item.retries = arp_queue_item.retries + 1
+                    if arp_queue_item.retries >= 4:
+                        self.arp_queue.remove(arp_queue_item)
+                    else:
+                        arp_queue_item.last_request_time = time.time()
+                        for interface in self.my_interface:
+                            if entry.interface_name == interface.name:
+                                arp_request = create_ip_arp_request(interface.ethaddr,interface.ipaddr,arp_queue_item.dest_ip)
+
+                                self.net.send_packet(interface.name,arp_request)
+
 
 class ForwardingTable:
 	table
@@ -202,11 +223,12 @@ def initialize_forwarding_table(router,table):
 
 class ArpQueueEntry:
 
-	def __init__(self,fw_table_entry = None, pkt = None, last_request_time = time.time()):
+	def __init__(self,dest_ip,fw_table_entry = None, pkt = None, last_request_time = time.time()):
 		self.last_request_time = last_request_time
         self.retries = 0
         self.fw_table_entry = fw_table_entry
         self.pkt = pkt
+        self.dest_ip = dest_ip
 
 
 
