@@ -80,9 +80,9 @@ class Router(object):
             dest_ip_address = ipv4_header.dst
         
         #Either we have the ARP address already mapped or we gotta query for it
-         if dest_ip_address in self.arp_table:
-                mac_addr = self.arp_table[dest_ip_address]
-         else:
+        if dest_ip_address in self.arp_table:
+              mac_addr = self.arp_table[dest_ip_address]
+        else:
              query_arp = 1
 
 		#Add packet to ARP queue
@@ -135,6 +135,7 @@ class Router(object):
             #Process ARP queue
             for arp_queue_item in self.arp_queue:
                 entry = arp_queue_item.fw_table_entry
+                time_dif = time.time() - arp_queue_item.last_request_time
                 if arp_queue_item.dest_ip in self.arp_table:
                     mac_addr = self.arp_table[arp_queue_item.dest_ip]
                     pkt = arp_queue_item.pkt
@@ -142,8 +143,7 @@ class Router(object):
                     
                     self.arp_queue.remove(arp_queue_item)
 
-                time_dif = time.time() - arp_queue_item.last_request_time
-                else if time_dif >= 1:
+                elif time_dif >= 1:
                     arp_queue_item.retries = arp_queue_item.retries + 1
                     if arp_queue_item.retries >= 4:
                         self.arp_queue.remove(arp_queue_item)
@@ -222,13 +222,13 @@ def initialize_forwarding_table(router,table):
 	return
 
 class ArpQueueEntry:
-
-	def __init__(self,dest_ip,fw_table_entry = None, pkt = None, last_request_time = time.time()):
-		self.last_request_time = last_request_time
+    def __init__(self,dest_ip,fw_table_entry = None, pkt = None, last_request_time = time.time()):
+        self.last_request_time = last_request_time
         self.retries = 0
         self.fw_table_entry = fw_table_entry
         self.pkt = pkt
         self.dest_ip = dest_ip
+
 
 
 
