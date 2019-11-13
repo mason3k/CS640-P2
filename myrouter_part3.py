@@ -30,8 +30,8 @@ class Router(object):
         arp = pkt.get_header(Arp)
 
 		# Reply
-        if arp.Operation == ArpOperation.Reply:
-            for intf in my_interfaces:
+        if arp.operation == ArpOperation.Reply:
+            for intf in self.my_interface:
                 if intf.ipaddr == arp.targetprotoaddr:
                     self.arp_table[arp.senderprotoaddr] = arp.senderhwaddr
 
@@ -98,7 +98,7 @@ class Router(object):
         #TODO if not, add it - add_entry
         return
 
-    def create_and_send_ethernet_packet(pkt,mac_addr,entry):
+    def create_and_send_ethernet_packet(self,pkt,mac_addr,entry):
         #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
         forward_pkt = pkt
         forward_pkt[0].dst = mac_addr
@@ -153,7 +153,7 @@ class Router(object):
                     
                     self.arp_queue.remove(arp_queue_item)
 
-                elif time_dif >= 1:
+                elif time_dif >= 1 or arp_queue_item.retries == 0:
                     arp_queue_item.retries = arp_queue_item.retries + 1
                     if arp_queue_item.retries >= 4:
                         self.arp_queue.remove(arp_queue_item)
@@ -197,7 +197,7 @@ class ForwardingTable:
         self.table.append(entry)
 
     def parse_interface_object(self,interface):
-        entry = ForwardingEntry(interface.ipaddr,interface.netmask,None,interface.name)
+        entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
         self.table.append(entry)
 
     '''
@@ -217,20 +217,20 @@ class ForwardingTable:
 
 class ForwardingEntry:
 
-	def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
-		self.net_prefix = net_prefix #this is an IP address
-		self.net_mask = net_mask
-		self.next_hop = next_hop
-		self.interface_name = interface_name
+    def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
+        self.net_prefix = net_prefix #this is an IP address
+        self.net_mask = net_mask
+        self.next_hop = next_hop
+        self.interface_name = interface_name
 
-	def is_match(self,dest_addr):
-		ipv4_prefix = self.net_prefix + "/" + self.net_mask
-		return dest_addr in ipv4_prefix
-
-	def prefix_length(self):
-		ipv4_prefix = self.net_prefix + "/" + self.net_mask
-		return ipv4_prefix.prefixlen
-
+    def is_match(self,dest_addr):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
+        ipv4_net = IPv4Network(ipv4_str,False)
+        return dest_addr in ipv4_net
+    def prefix_length(self):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
+        ipv4_net = IPv4Network(ipv4_str,False)
+        return ipv4_net.prefixlen
 def initialize_forwarding_table(router,table):
 	#Add interfaces from net_interfaces() to forwarding table
 	for interface in router.my_interface:

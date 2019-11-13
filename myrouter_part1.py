@@ -44,7 +44,7 @@ class Router(object):
 
                     # Reply
                     if arp.Operation == ArpOperation.Reply:
-                        for intf in my_interfaces:
+                        for intf in self.my_interface:
                             if intf.ipaddr == arp.targetprotoaddr:
                                 self.arp_table[arp.senderprotoaddr] = arp.senderhwaddr
 
