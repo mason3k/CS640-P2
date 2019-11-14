@@ -26,7 +26,7 @@ class Router(object):
                return True
         return False
 
-    def arp_actions(self,pkt,dev):
+    def arp_actions(self,pkt):
         arp = pkt.get_header(Arp)
 
 		# Reply
@@ -92,6 +92,12 @@ class Router(object):
         else:
             self.create_and_send_ethernet_packet(pkt,mac_addr,entry)
 
+    def dynamic_routing_actions(self,pkt):
+        #TODO check if the entry is already in the table - entry_already_in_table
+        #TODO if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
+        #TODO if not, add it - add_entry
+        return
+
     def create_and_send_ethernet_packet(self,pkt,mac_addr,entry):
         #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
         forward_pkt = pkt
@@ -109,6 +115,7 @@ class Router(object):
         packets until the end of time.
         '''
         #Initialize forwarding table from file and my_interface
+        #TODO should we still initialize the interface here? Or just populate from the file?
         initialize_forwarding_table(self,self.forwarding_table)
         
         while True:
@@ -116,7 +123,7 @@ class Router(object):
             try:
                 timestamp,dev,pkt = self.net.recv_packet(timeout=1.0)
             except NoPackets:
-                log_debug("No packets available in recv_packet")
+                log_debug("No packets availabl6e in recv_packet")
                 gotpkt = False
             except Shutdown:
                 log_debug("Got shutdown signal")
@@ -131,6 +138,9 @@ class Router(object):
 
                 if pkt.has_header(IPv4):
                     self.ipv4_actions(pkt)
+
+                if pkt.has_header(DynamicRoutingMessage):
+                    self.dynamic_routing_actions(pkt)
 
             #Process ARP queue
             for arp_queue_item in self.arp_queue:
@@ -158,64 +168,77 @@ class Router(object):
 
 class ForwardingTable:
 
-	def __init__(self):
-		self.table = []
+    def __init__(self,limit = 5):
+        self.table = []
+        self.dynamicTable = []
+        self.cur_row = 0
+        self.limit = limit
 
-	def parse_fileline(self,line):
-		line_list = line.split(" ",4)
-		net_address = line_list[0]
-		mask = line_list[1]
-		next_hop = line_list[2]
-		interface_name = line_list[3]
-		entry = ForwardingEntry(net_address,mask,next_hop,interface_name)
-		self.table.append(entry)
+    def add_entry(self,entry):
+        if self.cur_row > (self.limit - 1):
+            self.cur_row = 0
 
-	def parse_interface_object(self,interface):
-		entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
-		self.table.append(entry)
+        self.dynamicTable[self.cur_row] = entry
+        self.cur_row += 1
 
-    def toStr(self):
-        string = ""
-        for entry in self.table:
-            str += entry.net_prefix
-            str += entry.mask
+    def entry_already_in_table(self,net_prefix,net_mask):
+        for entry in self.dynamicTable:
+            if entry.net_prefix == net_prefix and entry.net_mask == net_mask:
+                return entry
 
-        return string
+        return None
 
-	'''
+    def parse_fileline(self,line):
+        line_list = line.split(" ",4)
+        net_address = line_list[0]
+        mask = line_list[1]
+        next_hop = line_list[2]
+        interface_name = line_list[3]
+        entry = ForwardingEntry(net_address,mask,next_hop,interface_name)
+        self.dynamicTable.append(entry)
+
+    def parse_interface_object(self,interface):
+        entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
+        self.table.append(entry)
+
+    '''
 	Can return None if no matches found
 	'''
-	def matching_entry(self,dest_addr):
-		max_prefix_len = 0
-		cur_entry = None
-		for entry in self.table:
-			if entry.is_match(dest_addr):
-				prefix_len = entry.prefix_length()
-				if prefix_len > max_prefix_len:
-					cur_entry = entry
-					max_prefix_len = prefix_len
+    def matching_entry(self,dest_addr):
+        max_prefix_len = 0
+        cur_entry = None
+        for entry in self.table:
+            if entry.is_match(dest_addr):
+                prefix_len = entry.prefix_length()
+                if prefix_len > max_prefix_len:
+                    cur_entry = entry
+                    max_prefix_len = prefix_len
 
-		return cur_entry
+        for entry in self.dynamicTable:
+            if entry.is_match(dest_addr):
+                prefix_len = entry.prefix_length()
+                if prefix_len > max_prefix_len:
+                    cur_entry = entry
+                    max_prefix_len = prefix_len
+
+        return cur_entry
 
 class ForwardingEntry:
 
-	def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
-		self.net_prefix = net_prefix
-		self.net_mask = net_mask
-		self.next_hop = next_hop
-		self.interface_name = interface_name
+    def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
+        self.net_prefix = net_prefix #this is an IP address
+        self.net_mask = net_mask
+        self.next_hop = next_hop
+        self.interface_name = interface_name
 
-	def is_match(self,dest_addr):
-		ipv4_str = self.net_prefix + "/" + self.net_mask
+    def is_match(self,dest_addr):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
         ipv4_net = IPv4Network(ipv4_str,False)
-		return dest_addr in ipv4_net
-
-	def prefix_length(self):
-		ipv4_str = self.net_prefix + "/" + self.net_mask
+        return dest_addr in ipv4_net
+    def prefix_length(self):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
         ipv4_net = IPv4Network(ipv4_str,False)
-		return ipv4_net.prefixlen
-
-
+        return ipv4_net.prefixlen
 def initialize_forwarding_table(router,table):
 	#Add interfaces from net_interfaces() to forwarding table
 	for interface in router.my_interface:
