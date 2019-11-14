@@ -10,6 +10,7 @@ import time
 
 from switchyard.lib.packet.util import *
 from switchyard.lib.userlib import *
+from dynamicroutingmessage import DynamicRoutingMessage
 
 class Router(object):
     def __init__(self, net):
@@ -26,7 +27,7 @@ class Router(object):
                return True
         return False
 
-    def arp_actions(self,pkt):
+    def arp_actions(self,pkt,dev):
         arp = pkt.get_header(Arp)
 
 		# Reply
@@ -92,8 +93,25 @@ class Router(object):
         else:
             self.create_and_send_ethernet_packet(pkt,mac_addr,entry)
 
-    def dynamic_routing_actions(self,pkt):
+    def dynamic_routing_actions(self,pkt,dev):
         #TODO check if the entry is already in the table - entry_already_in_table
+        DR_header = pkt.get_header(DynamicRoutingMessage)
+        DR_prefix = DR_header.advertised_prefix()
+        DR_mask = DR_header.advertised_mask()
+        DR_next_hop = DR_header.next_hop()
+        DR_interface_name = dev
+        
+        entry = self.forwarding_table.entry_already_in_dynamicTable(DR_prefix, DR_mask)
+
+        if entry == None:
+            
+            new_entry = ForwardingEntry(DR_prefix, DR_mask, DR_next_hop, DR_interface_name)
+            self.dynamicTable.add_entry(new_entry)
+
+        else:
+            entry.next_hop = new_next_hop
+            entry.interface_name = new_interface
+
         #TODO if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
         #TODO if not, add it - add_entry
         return
@@ -134,12 +152,12 @@ class Router(object):
 
                 # we do something only if it's an ARP request/reply
                 if pkt.has_header(Arp):
-                    self.arp_actions(pkt)
+                    self.arp_actions(pkt, dev)
 
                 if pkt.has_header(IPv4):
                     self.ipv4_actions(pkt)
 
-                if pkt.has_header(DynamicRoutingMessage):
+                if pkt.has_header(DynamicRoutingMessage, dev):
                     self.dynamic_routing_actions(pkt)
 
             #Process ARP queue
@@ -170,6 +188,7 @@ class ForwardingTable:
 
     def __init__(self,limit = 5):
         self.table = []
+        self.dynamicTable = []
         self.cur_row = 0
         self.limit = limit
 
@@ -177,11 +196,11 @@ class ForwardingTable:
         if self.cur_row > (self.limit - 1):
             self.cur_row = 0
 
-        self.table[self.cur_row] = entry
+        self.dynamicTable[self.cur_row] = entry
         self.cur_row += 1
 
-    def entry_already_in_table(self,net_prefix,net_mask):
-        for entry in self.table:
+    def entry_already_in_dynamicTable(self,net_prefix,net_mask):
+        for entry in self.dynamicTable:
             if entry.net_prefix == net_prefix and entry.net_mask == net_mask:
                 return entry
 
@@ -194,7 +213,7 @@ class ForwardingTable:
         next_hop = line_list[2]
         interface_name = line_list[3]
         entry = ForwardingEntry(net_address,mask,next_hop,interface_name)
-        self.table.append(entry)
+        self.dynamicTable.append(entry)
 
     def parse_interface_object(self,interface):
         entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
@@ -212,6 +231,14 @@ class ForwardingTable:
                 if prefix_len > max_prefix_len:
                     cur_entry = entry
                     max_prefix_len = prefix_len
+
+        for entry in self.dynamicTable:
+            if entry.is_match(dest_addr):
+                prefix_len = entry.prefix_length()
+                if prefix_len > max_prefix_len:
+                    cur_entry = entry
+                    max_prefix_len = prefix_len
+
 
         return cur_entry
 
