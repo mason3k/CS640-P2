@@ -96,9 +96,9 @@ class Router(object):
     def dynamic_routing_actions(self,pkt,dev):
         #TODO check if the entry is already in the table - entry_already_in_table
         DR_header = pkt.get_header(DynamicRoutingMessage)
-        DR_prefix = DR_header.advertised_prefix()
-        DR_mask = DR_header.advertised_mask()
-        DR_next_hop = DR_header.next_hop()
+        DR_prefix = DR_header.advertised_prefix
+        DR_mask = DR_header.advertised_mask
+        DR_next_hop = DR_header.next_hop
         DR_interface_name = dev
         
         entry = self.forwarding_table.entry_already_in_dynamicTable(DR_prefix, DR_mask)
@@ -106,11 +106,11 @@ class Router(object):
         if entry == None:
             
             new_entry = ForwardingEntry(DR_prefix, DR_mask, DR_next_hop, DR_interface_name)
-            self.dynamicTable.add_entry(new_entry)
+            self.forwarding_table.add_entry(new_entry)
 
         else:
-            entry.next_hop = new_next_hop
-            entry.interface_name = new_interface
+            entry.next_hop = DR_next_hop
+            entry.interface_name = DR_interface_name
 
         #TODO if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
         #TODO if not, add it - add_entry
