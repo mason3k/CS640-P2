@@ -123,7 +123,7 @@ class Router(object):
             try:
                 timestamp,dev,pkt = self.net.recv_packet(timeout=1.0)
             except NoPackets:
-                log_debug("No packets available in recv_packet")
+                log_debug("No packets availabl6e in recv_packet")
                 gotpkt = False
             except Shutdown:
                 log_debug("Got shutdown signal")
@@ -134,7 +134,7 @@ class Router(object):
 
                 # we do something only if it's an ARP request/reply
                 if pkt.has_header(Arp):
-                    self.arp_actions(pkt)
+                    self.arp_actions(pkt,dev)
 
                 if pkt.has_header(IPv4):
                     self.ipv4_actions(pkt)
@@ -170,6 +170,7 @@ class ForwardingTable:
 
     def __init__(self,limit = 5):
         self.table = []
+        self.dynamicTable = []
         self.cur_row = 0
         self.limit = limit
 
@@ -177,11 +178,11 @@ class ForwardingTable:
         if self.cur_row > (self.limit - 1):
             self.cur_row = 0
 
-        self.table[self.cur_row] = entry
+        self.dynamicTable[self.cur_row] = entry
         self.cur_row += 1
 
     def entry_already_in_table(self,net_prefix,net_mask):
-        for entry in self.table:
+        for entry in self.dynamicTable:
             if entry.net_prefix == net_prefix and entry.net_mask == net_mask:
                 return entry
 
@@ -194,7 +195,7 @@ class ForwardingTable:
         next_hop = line_list[2]
         interface_name = line_list[3]
         entry = ForwardingEntry(net_address,mask,next_hop,interface_name)
-        self.table.append(entry)
+        self.dynamicTable.append(entry)
 
     def parse_interface_object(self,interface):
         entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
@@ -207,6 +208,13 @@ class ForwardingTable:
         max_prefix_len = 0
         cur_entry = None
         for entry in self.table:
+            if entry.is_match(dest_addr):
+                prefix_len = entry.prefix_length()
+                if prefix_len > max_prefix_len:
+                    cur_entry = entry
+                    max_prefix_len = prefix_len
+
+        for entry in self.dynamicTable:
             if entry.is_match(dest_addr):
                 prefix_len = entry.prefix_length()
                 if prefix_len > max_prefix_len:

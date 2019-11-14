@@ -26,7 +26,7 @@ class Router(object):
                return True
         return False
 
-    def arp_actions(self,pkt):
+    def arp_actions(self,pkt,dev):
         arp = pkt.get_header(Arp)
 
 		# Reply
@@ -127,7 +127,7 @@ class Router(object):
 
                 # we do something only if it's an ARP request/reply
                 if pkt.has_header(Arp):
-                    self.arp_actions(pkt)
+                    self.arp_actions(pkt,dev)
 
                 if pkt.has_header(IPv4):
                     self.ipv4_actions(pkt)
