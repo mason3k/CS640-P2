@@ -107,7 +107,7 @@ class Router(object):
 
         #if not, add it - add_entry
         if entry == None:
-            new_entry = ForwardingEntry(DR_prefix, DR_mask, DR_next_hop, DR_interface_name)
+            new_entry = ForwardingEntry(str(DR_prefix), str(DR_mask), DR_next_hop, DR_interface_name)
             self.forwarding_table.add_entry(new_entry)
         #if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
         else:
