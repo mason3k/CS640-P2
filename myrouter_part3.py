@@ -10,6 +10,7 @@ import time
 
 from switchyard.lib.packet.util import *
 from switchyard.lib.userlib import *
+from dynamicroutingmessage import DynamicRoutingMessage
 
 class Router(object):
     def __init__(self, net):
@@ -26,7 +27,7 @@ class Router(object):
                return True
         return False
 
-    def arp_actions(self,pkt):
+    def arp_actions(self,pkt,dev):
         arp = pkt.get_header(Arp)
 
 		# Reply
@@ -59,6 +60,7 @@ class Router(object):
 
     def ipv4_actions(self,pkt):
         ipv4_header = pkt.get_header(IPv4)
+        query_arp=0
 
 	    #decrement TTL by 1
         ipv4_header.ttl = ipv4_header.ttl - 1
@@ -93,9 +95,25 @@ class Router(object):
             self.create_and_send_ethernet_packet(pkt,mac_addr,entry)
 
     def dynamic_routing_actions(self,pkt):
-        #TODO check if the entry is already in the table - entry_already_in_table
-        #TODO if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
-        #TODO if not, add it - add_entry
+        #check if the entry is already in the table - entry_already_in_table
+        DR_header = pkt.get_header(DynamicRoutingMessage)
+        log_debug("DR_header: {}".format(DR_header))
+        DR_prefix = DR_header.advertised_prefix
+        DR_mask = DR_header.advertised_mask
+        DR_next_hop = DR_header.next_hop
+        DR_interface_name = dev
+        
+        entry = self.forwarding_table.entry_already_in_dynamicTable(DR_prefix, DR_mask)
+
+        #if not, add it - add_entry
+        if entry == None:
+            new_entry = ForwardingEntry(DR_prefix, DR_mask, DR_next_hop, DR_interface_name)
+            self.forwarding_table.add_entry(new_entry)
+        #if so (entry_already_in_table returns != None), update the entry that is returned by entry_already_in_table
+        else:
+            entry.next_hop = DR_next_hop
+            entry.interface_name = DR_interface_name
+
         return
 
     def create_and_send_ethernet_packet(self,pkt,mac_addr,entry):
@@ -115,7 +133,7 @@ class Router(object):
         packets until the end of time.
         '''
         #Initialize forwarding table from file and my_interface
-        #TODO should we still initialize the interface here? Or just populate from the file?
+
         initialize_forwarding_table(self,self.forwarding_table)
         
         while True:
@@ -140,7 +158,7 @@ class Router(object):
                     self.ipv4_actions(pkt)
 
                 if pkt.has_header(DynamicRoutingMessage):
-                    self.dynamic_routing_actions(pkt)
+                    self.dynamic_routing_actions(pkt, dev)
 
             #Process ARP queue
             for arp_queue_item in self.arp_queue:
@@ -181,7 +199,7 @@ class ForwardingTable:
         self.dynamicTable[self.cur_row] = entry
         self.cur_row += 1
 
-    def entry_already_in_table(self,net_prefix,net_mask):
+    def entry_already_in_dynamicTable(self,net_prefix,net_mask):
         for entry in self.dynamicTable:
             if entry.net_prefix == net_prefix and entry.net_mask == net_mask:
                 return entry

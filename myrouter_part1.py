@@ -43,7 +43,7 @@ class Router(object):
                     arp = pkt.get_header(Arp)
 
                     # Reply
-                    if arp.Operation == ArpOperation.Reply:
+                    if arp.operation == ArpOperation.Reply:
                         for intf in self.my_interface:
                             if intf.ipaddr == arp.targetprotoaddr:
                                 self.arp_table[arp.senderprotoaddr] = arp.senderhwaddr

@@ -59,6 +59,7 @@ class Router(object):
 
     def ipv4_actions(self,pkt):
         ipv4_header = pkt.get_header(IPv4)
+        query_arp = 0
 
 	    #decrement TTL by 1
         ipv4_header.ttl = ipv4_header.ttl - 1
@@ -96,7 +97,6 @@ class Router(object):
         #create an Ethernet packet and send it out since we know mac_addr/interface name to send it on
         forward_pkt = pkt
         forward_pkt[0].dst = mac_addr
-        #TODO update time of use of ARP entry!
 
         for intf in self.my_interface:
             if intf.name == entry.interface_name:
@@ -174,14 +174,6 @@ class ForwardingTable:
 		entry = ForwardingEntry(str(interface.ipaddr),str(interface.netmask),None,interface.name)
 		self.table.append(entry)
 
-    def toStr(self):
-        string = ""
-        for entry in self.table:
-            str += entry.net_prefix
-            str += entry.mask
-
-        return string
-
 	'''
 	Can return None if no matches found
 	'''
@@ -199,21 +191,21 @@ class ForwardingTable:
 
 class ForwardingEntry:
 
-	def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
-		self.net_prefix = net_prefix
-		self.net_mask = net_mask
-		self.next_hop = next_hop
-		self.interface_name = interface_name
+    def __init__(self,net_prefix,net_mask,next_hop = None,interface_name = None):
+        self.net_prefix = net_prefix
+        self.net_mask = net_mask
+        self.next_hop = next_hop
+        self.interface_name = interface_name
 
-	def is_match(self,dest_addr):
-		ipv4_str = self.net_prefix + "/" + self.net_mask
+    def is_match(self,dest_addr):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
         ipv4_net = IPv4Network(ipv4_str,False)
-		return dest_addr in ipv4_net
+        return dest_addr in ipv4_net
 
-	def prefix_length(self):
-		ipv4_str = self.net_prefix + "/" + self.net_mask
+    def prefix_length(self):
+        ipv4_str = self.net_prefix + "/" + self.net_mask
         ipv4_net = IPv4Network(ipv4_str,False)
-		return ipv4_net.prefixlen
+        return ipv4_net.prefixlen
 
 
 def initialize_forwarding_table(router,table):
